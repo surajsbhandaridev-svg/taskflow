@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskFlow — Priority Task Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<style>
+  :root {
+    --bg: #0d0e11;
+    --bg2: #13151a;
+    --bg3: #1a1d24;
+    --bg4: #21252f;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8eaf0;
+    --muted: #7a7f8e;
+    --accent: #6c63ff;
+    --accent2: #a78bfa;
+    --red: #ff6b6b;
+    --amber: #fbbf24;
+    --green: #34d399;
+    --teal: #22d3ee;
+    --pink: #f472b6;
+    --mono: 'Space Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; overflow-x: hidden; }
+
+  /* TOPBAR */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 2rem; height: 56px; background: var(--bg2); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+  .logo { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
+  .logo span { color: var(--accent2); }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .user-chip { display: flex; align-items: center; gap: 8px; background: var(--bg3); border: 1px solid var(--border); border-radius: 24px; padding: 5px 14px 5px 6px; cursor: pointer; font-size: 13px; color: var(--muted); }
+  .avatar { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; font-weight: 700; }
+  .btn { border: 1px solid var(--border2); background: var(--bg3); color: var(--text); border-radius: 8px; padding: 7px 14px; font-family: var(--sans); font-size: 13px; cursor: pointer; transition: all 0.15s; }
+  .btn:hover { background: var(--bg4); border-color: var(--border2); }
+  .btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-accent:hover { background: #5a52e8; }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+  /* LAYOUT */
+  .app { display: flex; height: calc(100vh - 56px); }
+
+  /* SIDEBAR */
+  .sidebar { width: 240px; flex-shrink: 0; background: var(--bg2); border-right: 1px solid var(--border); padding: 1.5rem 0; display: flex; flex-direction: column; gap: 0; overflow-y: auto; }
+  .sidebar-section { padding: 0 1rem 1rem; }
+  .sidebar-label { font-size: 10px; font-family: var(--mono); color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; padding: 0 0.5rem 0.5rem; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; color: var(--muted); cursor: pointer; transition: all 0.15s; }
+  .nav-item:hover, .nav-item.active { background: var(--bg3); color: var(--text); }
+  .nav-item.active { color: var(--accent2); }
+  .nav-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .nav-count { margin-left: auto; font-size: 11px; font-family: var(--mono); background: var(--bg4); border-radius: 10px; padding: 1px 7px; }
+
+  .session-box { margin: 0 1rem 1rem; background: var(--bg3); border: 1px solid var(--border2); border-radius: 10px; padding: 12px; }
+  .session-key { font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--accent2); letter-spacing: 2px; text-align: center; margin: 6px 0; }
+  .session-role { font-size: 11px; color: var(--muted); text-align: center; margin-bottom: 8px; }
+  .session-members { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .member-pip { font-size: 10px; background: var(--bg4); border: 1px solid var(--border); border-radius: 12px; padding: 2px 8px; color: var(--muted); }
+
+  /* MAIN */
+  .main { flex: 1; overflow-y: auto; padding: 2rem; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* DASHBOARD */
+  .dash-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
+  .dash-title { font-size: 22px; font-weight: 500; }
+  .dash-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  .lanes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; align-items: start; }
+  .lane { background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .lane-header { padding: 14px 16px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .lane-icon { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .lane-title { font-size: 12px; font-family: var(--mono); font-weight: 700; letter-spacing: 0.5px; }
+  .lane-cnt { margin-left: auto; font-size: 11px; font-family: var(--mono); color: var(--muted); background: var(--bg3); border-radius: 8px; padding: 1px 7px; }
+  .lane-body { padding: 12px; min-height: 120px; display: flex; flex-direction: column; gap: 8px; }
+  .lane-empty { color: var(--muted); font-size: 12px; text-align: center; padding: 2rem 0; opacity: 0.6; }
+
+  .task-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 12px; cursor: pointer; transition: all 0.2s; position: relative; }
+  .task-card:hover { border-color: var(--border2); background: var(--bg4); }
+  .task-card.done { opacity: 0.5; }
+  .task-title { font-size: 13px; font-weight: 500; margin-bottom: 6px; line-height: 1.4; }
+  .task-title.done { text-decoration: line-through; color: var(--muted); }
+  .task-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .tag { font-size: 10px; font-family: var(--mono); border-radius: 4px; padding: 2px 6px; }
+  .tag-time { background: rgba(108,99,255,0.15); color: var(--accent2); }
+  .tag-date { background: rgba(251,191,36,0.12); color: var(--amber); }
+  .tag-overdue { background: rgba(255,107,107,0.15); color: var(--red); }
+  .tag-assigned { background: rgba(34,211,238,0.12); color: var(--teal); }
+  .task-actions { display: flex; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .task-btn { flex: 1; background: var(--bg4); border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 11px; font-family: var(--sans); cursor: pointer; padding: 5px; text-align: center; transition: all 0.15s; }
+  .task-btn:hover { color: var(--text); border-color: var(--border2); }
+  .task-btn.complete { color: var(--green); }
+  .task-btn.complete:hover { background: rgba(52,211,153,0.1); }
+  .task-btn.delete { color: var(--red); }
+  .task-btn.delete:hover { background: rgba(255,107,107,0.1); }
+
+  .add-task-btn { width: 100%; background: transparent; border: 1px dashed var(--border2); border-radius: 8px; color: var(--muted); font-size: 12px; font-family: var(--sans); cursor: pointer; padding: 8px; transition: all 0.15s; margin-top: 4px; }
+  .add-task-btn:hover { background: var(--bg3); color: var(--text); }
+
+  /* MODAL */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 500; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--bg2); border: 1px solid var(--border2); border-radius: 16px; padding: 24px; width: 460px; max-width: 90vw; max-height: 90vh; overflow-y: auto; }
+  .modal-title { font-size: 16px; font-weight: 500; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
+  .modal-close { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1; }
+  .modal-close:hover { color: var(--text); }
+  .form-group { margin-bottom: 16px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-family: var(--mono); letter-spacing: 0.5px; }
+  input, textarea, select { width: 100%; background: var(--bg3); border: 1px solid var(--border2); border-radius: 8px; color: var(--text); font-family: var(--sans); font-size: 14px; padding: 9px 12px; outline: none; transition: border-color 0.15s; }
+  input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+  select option { background: var(--bg2); }
+  textarea { resize: vertical; min-height: 80px; }
+  .modal-actions { display: flex; gap: 8px; margin-top: 20px; }
+  .modal-actions .btn { flex: 1; }
+
+  /* COLLAB PAGE */
+  .collab-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  .panel { background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+  .panel-title { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+  .panel-sub { font-size: 12px; color: var(--muted); margin-bottom: 18px; }
+  .key-display { font-family: var(--mono); font-size: 32px; font-weight: 700; color: var(--accent2); letter-spacing: 6px; text-align: center; padding: 20px; background: var(--bg3); border-radius: 10px; border: 1px solid var(--border); margin: 12px 0; }
+  .invite-row { display: flex; gap: 8px; }
+  .invite-row input { flex: 1; }
+
+  .member-card { display: flex; align-items: center; gap: 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .member-info { flex: 1; }
+  .member-name { font-size: 13px; font-weight: 500; }
+  .member-email { font-size: 11px; color: var(--muted); }
+  .role-badge { font-size: 10px; font-family: var(--mono); border-radius: 4px; padding: 2px 7px; }
+  .role-lead { background: rgba(167,139,250,0.2); color: var(--accent2); }
+  .role-junior { background: rgba(34,211,238,0.15); color: var(--teal); }
+  .role-pending { background: rgba(251,191,36,0.15); color: var(--amber); }
+
+  .assign-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
+
+  /* REMINDERS */
+  .reminder-list { display: flex; flex-direction: column; gap: 10px; }
+  .reminder-item { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; align-items: center; gap: 14px; }
+  .reminder-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .reminder-info { flex: 1; }
+  .reminder-title { font-size: 13px; font-weight: 500; }
+  .reminder-time { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+  .reminder-priority { font-size: 10px; font-family: var(--mono); border-radius: 4px; padding: 2px 7px; }
+
+  /* TOAST */
+  .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+  .toast { background: var(--bg3); border: 1px solid var(--border2); border-radius: 10px; padding: 12px 16px; font-size: 13px; max-width: 300px; animation: slideIn 0.3s ease; display: flex; align-items: flex-start; gap: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+  .toast-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .toast-msg { flex: 1; line-height: 1.4; }
+  @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  /* STATS */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 2rem; }
+  .stat-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .stat-val { font-family: var(--mono); font-size: 28px; font-weight: 700; }
+  .stat-label { font-size: 11px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* PROFILE SETUP */
+  .setup-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 999; display: flex; align-items: center; justify-content: center; }
+  .setup-card { background: var(--bg2); border: 1px solid var(--border2); border-radius: 20px; padding: 40px; width: 400px; text-align: center; }
+  .setup-logo { font-family: var(--mono); font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .setup-logo span { color: var(--accent2); }
+  .setup-sub { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
+  .setup-card .form-group { text-align: left; }
+
+  /* NOTIF BANNER */
+  .notif-banner { background: rgba(108,99,255,0.1); border: 1px solid rgba(108,99,255,0.3); border-radius: 10px; padding: 12px 16px; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 12px; font-size: 13px; }
+  .notif-banner button { margin-left: auto; }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
+  /* responsive hint */
+  @media (max-width: 900px) {
+    .lanes { grid-template-columns: 1fr; }
+    .collab-grid { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    .sidebar { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SETUP SCREEN -->
+<div class="setup-overlay" id="setupOverlay">
+  <div class="setup-card">
+    <div class="setup-logo">Task<span>Flow</span></div>
+    <p class="setup-sub">Priority-driven task management & collab</p>
+    <div class="form-group"><label>YOUR NAME</label><input id="setupName" placeholder="e.g. Aryan Singh" /></div>
+    <div class="form-group"><label>YOUR EMAIL</label><input id="setupEmail" type="email" placeholder="you@example.com" /></div>
+    <div class="form-group"><label>AVATAR COLOR</label>
+      <div style="display:flex;gap:8px;margin-top:4px;" id="colorPicker">
+        <div class="color-opt" data-color="#6c63ff" style="width:28px;height:28px;border-radius:50%;background:#6c63ff;cursor:pointer;border:2px solid transparent;"></div>
+        <div class="color-opt" data-color="#34d399" style="width:28px;height:28px;border-radius:50%;background:#34d399;cursor:pointer;border:2px solid transparent;"></div>
+        <div class="color-opt" data-color="#f472b6" style="width:28px;height:28px;border-radius:50%;background:#f472b6;cursor:pointer;border:2px solid transparent;"></div>
+        <div class="color-opt" data-color="#fbbf24" style="width:28px;height:28px;border-radius:50%;background:#fbbf24;cursor:pointer;border:2px solid transparent;"></div>
+        <div class="color-opt" data-color="#22d3ee" style="width:28px;height:28px;border-radius:50%;background:#22d3ee;cursor:pointer;border:2px solid transparent;"></div>
+        <div class="color-opt" data-color="#ff6b6b" style="width:28px;height:28px;border-radius:50%;background:#ff6b6b;cursor:pointer;border:2px solid transparent;"></div>
+      </div>
+    </div>
+    <button class="btn btn-accent" style="width:100%;margin-top:12px;padding:11px;" onclick="saveProfile()">Get Started →</button>
+  </div>
+</div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">Task<span>Flow</span></div>
+  <div class="topbar-right">
+    <div id="sessionIndicator" style="display:none;font-size:12px;color:var(--teal);font-family:var(--mono);background:rgba(34,211,238,0.1);border:1px solid rgba(34,211,238,0.25);border-radius:6px;padding:4px 10px;"></div>
+    <div class="user-chip" onclick="showPage('collab')">
+      <div class="avatar" id="topAvatar" style="background:#6c63ff;color:#fff;">TF</div>
+      <span id="topName">User</span>
+    </div>
+    <button class="btn btn-accent btn-sm" onclick="openModal('addTask')">+ Add Task</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="app">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Navigation</div>
+      <div class="nav-item active" onclick="showPage('dashboard',this)">
+        <span style="font-size:16px;">⬛</span> Dashboard
+        <span class="nav-count" id="navTotal">0</span>
+      </div>
+      <div class="nav-item" onclick="showPage('reminders',this)">
+        <span style="font-size:16px;">🔔</span> Reminders
+        <span class="nav-count" id="navReminders">0</span>
+      </div>
+      <div class="nav-item" onclick="showPage('collab',this)">
+        <span style="font-size:16px;">👥</span> Collab
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Priority Lanes</div>
+      <div class="nav-item" onclick="showPage('dashboard',document.querySelector('.nav-item'))">
+        <span class="nav-dot" style="background:var(--red);"></span> Most Important
+        <span class="nav-count" id="navMost">0</span>
+      </div>
+      <div class="nav-item" onclick="showPage('dashboard',document.querySelector('.nav-item'))">
+        <span class="nav-dot" style="background:var(--amber);"></span> Important
+        <span class="nav-count" id="navImp">0</span>
+      </div>
+      <div class="nav-item" onclick="showPage('dashboard',document.querySelector('.nav-item'))">
+        <span class="nav-dot" style="background:var(--muted);"></span> Not Important
+        <span class="nav-count" id="navNot">0</span>
+      </div>
+    </div>
+    <div style="flex:1;"></div>
+    <div id="sidebarSession" style="display:none;">
+      <div class="session-box">
+        <div style="font-size:10px;color:var(--muted);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Active Session</div>
+        <div class="session-key" id="sideSessionKey">——</div>
+        <div class="session-role" id="sideSessionRole">Role: —</div>
+        <div class="session-members" id="sideSessionMembers"></div>
+      </div>
+    </div>
+    <div class="sidebar-section" style="padding-bottom:0.5rem;">
+      <button class="btn btn-sm" style="width:100%;font-size:11px;color:var(--muted);" onclick="clearAll()">Clear All Data</button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- DASHBOARD PAGE -->
+    <div class="page active" id="page-dashboard">
+      <div class="dash-header">
+        <div>
+          <div class="dash-title">My Dashboard</div>
+          <div class="dash-sub" id="dashDate">Today, loading...</div>
+        </div>
+        <button class="btn" onclick="openModal('addTask')">+ New Task</button>
+      </div>
+
+      <div id="notifBanner" class="notif-banner" style="display:none;">
+        <span>🔔</span>
+        <span>Enable browser notifications to get task reminders at the right time.</span>
+        <button class="btn btn-sm" onclick="requestNotif()">Enable</button>
+        <button class="btn btn-sm" style="margin-left:4px;" onclick="document.getElementById('notifBanner').style.display='none'">✕</button>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-val" id="statTotal" style="color:var(--accent2)">0</div><div class="stat-label">Total Tasks</div></div>
+        <div class="stat-card"><div class="stat-val" id="statToday" style="color:var(--teal)">0</div><div class="stat-label">Due Today</div></div>
+        <div class="stat-card"><div class="stat-val" id="statDone" style="color:var(--green)">0</div><div class="stat-label">Completed</div></div>
+        <div class="stat-card"><div class="stat-val" id="statOverdue" style="color:var(--red)">0</div><div class="stat-label">Overdue</div></div>
+      </div>
+
+      <div class="lanes">
+        <!-- Most Important -->
+        <div class="lane">
+          <div class="lane-header">
+            <div class="lane-icon" style="background:var(--red);box-shadow:0 0 8px rgba(255,107,107,0.5);"></div>
+            <div class="lane-title" style="color:var(--red);">MOST IMPORTANT</div>
+            <div class="lane-cnt" id="cntMost">0</div>
+          </div>
+          <div class="lane-body" id="laneMost">
+            <div class="lane-empty">No critical tasks 🎉</div>
+          </div>
+          <div style="padding:0 12px 12px;"><button class="add-task-btn" onclick="openModal('addTask','most')">+ Add task</button></div>
+        </div>
+        <!-- Important -->
+        <div class="lane">
+          <div class="lane-header">
+            <div class="lane-icon" style="background:var(--amber);box-shadow:0 0 8px rgba(251,191,36,0.4);"></div>
+            <div class="lane-title" style="color:var(--amber);">IMPORTANT</div>
+            <div class="lane-cnt" id="cntImp">0</div>
+          </div>
+          <div class="lane-body" id="laneImp">
+            <div class="lane-empty">All clear here ✓</div>
+          </div>
+          <div style="padding:0 12px 12px;"><button class="add-task-btn" onclick="openModal('addTask','important')">+ Add task</button></div>
+        </div>
+        <!-- Not Important -->
+        <div class="lane">
+          <div class="lane-header">
+            <div class="lane-icon" style="background:var(--muted);"></div>
+            <div class="lane-title" style="color:var(--muted);">NOT IMPORTANT</div>
+            <div class="lane-cnt" id="cntNot">0</div>
+          </div>
+          <div class="lane-body" id="laneNot">
+            <div class="lane-empty">Add some backlog tasks</div>
+          </div>
+          <div style="padding:0 12px 12px;"><button class="add-task-btn" onclick="openModal('addTask','not')">+ Add task</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- REMINDERS PAGE -->
+    <div class="page" id="page-reminders">
+      <div class="dash-header">
+        <div>
+          <div class="dash-title">Reminders</div>
+          <div class="dash-sub">All scheduled task alerts</div>
+        </div>
+      </div>
+      <div class="reminder-list" id="reminderList">
+        <p style="color:var(--muted);font-size:13px;text-align:center;padding:3rem 0;">No reminders set yet. Add a task with a scheduled time.</p>
+      </div>
+    </div>
+
+    <!-- COLLAB PAGE -->
+    <div class="page" id="page-collab">
+      <div class="dash-header">
+        <div>
+          <div class="dash-title">Collaboration</div>
+          <div class="dash-sub">Create or join a session to work with others</div>
+        </div>
+      </div>
+
+      <div class="collab-grid">
+        <!-- Create Session -->
+        <div class="panel">
+          <div class="panel-title">Create a Session</div>
+          <div class="panel-sub">Start a new collab session — you'll be the Lead</div>
+          <button class="btn btn-accent" style="width:100%;padding:10px;" onclick="createSession()">Generate Session Key</button>
+          <div id="createdSession" style="display:none;">
+            <div class="key-display" id="createdKey">——</div>
+            <p style="font-size:12px;color:var(--muted);text-align:center;margin-bottom:14px;">Share this key with your team members</p>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-family:var(--mono);letter-spacing:0.5px;">INVITE BY EMAIL</div>
+            <div class="invite-row">
+              <input id="inviteEmail" placeholder="member@example.com" />
+              <button class="btn" onclick="inviteMember()">Invite</button>
+            </div>
+            <div id="inviteStatus" style="font-size:12px;color:var(--green);margin-top:8px;display:none;"></div>
+          </div>
+        </div>
+
+        <!-- Join Session -->
+        <div class="panel">
+          <div class="panel-title">Join a Session</div>
+          <div class="panel-sub">Enter the session key shared by your Lead</div>
+          <div class="form-group" style="margin-bottom:12px;">
+            <label>SESSION KEY</label>
+            <input id="joinKeyInput" placeholder="e.g. X7K2PQ" style="font-family:var(--mono);letter-spacing:3px;font-size:18px;text-transform:uppercase;" maxlength="6" />
+          </div>
+          <div class="form-group" style="margin-bottom:12px;">
+            <label>YOUR EMAIL (must match invite)</label>
+            <input id="joinEmail" placeholder="you@example.com" />
+          </div>
+          <button class="btn" style="width:100%;padding:10px;" onclick="joinSession()">Join Session</button>
+          <div id="joinStatus" style="font-size:12px;margin-top:10px;display:none;"></div>
+        </div>
+      </div>
+
+      <!-- Active Session Panel (shown when in session) -->
+      <div id="activeSessionPanel" style="display:none;margin-top:1.5rem;">
+        <hr class="divider">
+        <div class="dash-title" style="font-size:16px;margin-bottom:1rem;">Active Session — <span id="activeSessionKeyDisplay" style="color:var(--accent2);font-family:var(--mono);"></span></div>
+        <div class="collab-grid">
+          <div class="panel">
+            <div class="panel-title">Team Members</div>
+            <div class="panel-sub" style="margin-bottom:12px;">People in this session</div>
+            <div id="membersList"></div>
+          </div>
+          <div id="assignPanel" class="panel" style="display:none;">
+            <div class="panel-title">Assign Task</div>
+            <div class="panel-sub" style="margin-bottom:12px;">Lead can assign tasks to juniors</div>
+            <div class="assign-row">
+              <div class="form-group" style="margin:0;">
+                <label>TASK</label>
+                <select id="assignTaskSelect" style="font-size:12px;"></select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label>ASSIGN TO</label>
+                <select id="assignMemberSelect" style="font-size:12px;"></select>
+              </div>
+              <div style="padding-bottom:0px;"><button class="btn btn-accent btn-sm" style="height:38px;" onclick="assignTask()">Assign</button></div>
+            </div>
+            <div id="assignStatus" style="font-size:12px;color:var(--green);margin-top:8px;display:none;"></div>
+            <hr class="divider" style="margin:12px 0;">
+            <div style="font-size:12px;font-family:var(--mono);color:var(--muted);margin-bottom:10px;letter-spacing:0.5px;">TASK ASSIGNMENTS</div>
+            <div id="assignmentsList"></div>
+          </div>
+        </div>
+        <div style="margin-top:12px;">
+          <button class="btn btn-sm" style="color:var(--red);border-color:rgba(255,107,107,0.3);" onclick="leaveSession()">Leave Session</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ADD TASK MODAL -->
+<div class="modal-overlay" id="modal-addTask">
+  <div class="modal">
+    <div class="modal-title">
+      New Task
+      <button class="modal-close" onclick="closeModal('addTask')">×</button>
+    </div>
+    <div class="form-group"><label>TASK TITLE</label><input id="taskTitle" placeholder="What needs to be done?" /></div>
+    <div class="form-group"><label>DESCRIPTION (optional)</label><textarea id="taskDesc" placeholder="Details..."></textarea></div>
+    <div class="form-group"><label>PRIORITY</label>
+      <select id="taskPriority">
+        <option value="most">🔴 Most Important</option>
+        <option value="important">🟡 Important</option>
+        <option value="not">⚪ Not Important</option>
+      </select>
+    </div>
+    <div class="form-group"><label>DUE DATE</label><input type="date" id="taskDate" /></div>
+    <div class="form-group"><label>REMINDER TIME (for today's tasks)</label><input type="time" id="taskTime" /></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('addTask')">Cancel</button>
+      <button class="btn btn-accent" onclick="addTask()">Add Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT TASK MODAL -->
+<div class="modal-overlay" id="modal-editTask">
+  <div class="modal">
+    <div class="modal-title">
+      Edit Task
+      <button class="modal-close" onclick="closeModal('editTask')">×</button>
+    </div>
+    <input type="hidden" id="editTaskId" />
+    <div class="form-group"><label>TASK TITLE</label><input id="editTitle" /></div>
+    <div class="form-group"><label>DESCRIPTION</label><textarea id="editDesc"></textarea></div>
+    <div class="form-group"><label>PRIORITY</label>
+      <select id="editPriority">
+        <option value="most">🔴 Most Important</option>
+        <option value="important">🟡 Important</option>
+        <option value="not">⚪ Not Important</option>
+      </select>
+    </div>
+    <div class="form-group"><label>DUE DATE</label><input type="date" id="editDate" /></div>
+    <div class="form-group"><label>REMINDER TIME</label><input type="time" id="editTime" /></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('editTask')">Cancel</button>
+      <button class="btn btn-accent" onclick="saveEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── SUPABASE + EMAILJS INIT ──────────────────────────────────────────────────
+const SUPABASE_URL = "https://oyilqihdldsjrrqyfhhi.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_B9vyP3KEal9J7IJcXLF7VA_fsWqKWy1";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+emailjs.init("X8paVY02sHi8u7xUs");
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+// Only profile/session identity in localStorage — all app data in Supabase
+let state = {
+  user: null,     // { name, email, color, initials } — stored in localStorage
+  tasks: [],      // loaded from Supabase
+  session: null,  // { key, role } — stored in localStorage
+};
+
+function loadProfile() {
+  try {
+    const raw = localStorage.getItem('taskflow_profile');
+    if (raw) state.user = JSON.parse(raw);
+    const rawSess = localStorage.getItem('taskflow_session');
+    if (rawSess) state.session = JSON.parse(rawSess);
+  } catch(e) {}
+}
+function saveProfile() {
+  const name  = document.getElementById('setupName').value.trim();
+  const email = document.getElementById('setupEmail').value.trim().toLowerCase();
+  if (!name || !email) { toast('Fill in your name and email.','⚠️'); return; }
+  state.user = { name, email, color: selectedColor, initials: name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2) };
+  localStorage.setItem('taskflow_profile', JSON.stringify(state.user));
+  document.getElementById('setupOverlay').style.display = 'none';
+  initUI();
+}
+function saveSessionLocally() {
+  if (state.session) localStorage.setItem('taskflow_session', JSON.stringify(state.session));
+  else localStorage.removeItem('taskflow_session');
+}
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function genKey() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let k = '';
+  for (let i=0;i<6;i++) k += chars[Math.floor(Math.random()*chars.length)];
+  return k;
+}
+
+// ─── PROFILE COLOR PICKER ────────────────────────────────────────────────────
+let selectedColor = '#6c63ff';
+document.querySelectorAll('.color-opt').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.color-opt').forEach(e => e.style.border='2px solid transparent');
+    el.style.border = '2px solid #fff';
+    selectedColor = el.dataset.color;
+  });
+});
+document.querySelector('[data-color="#6c63ff"]').style.border = '2px solid #fff';
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+loadProfile();
+if (state.user) {
+  document.getElementById('setupOverlay').style.display = 'none';
+  initUI();
+}
+
+async function initUI() {
+  const u = state.user;
+  document.getElementById('topName').textContent = u.name.split(' ')[0];
+  document.getElementById('topAvatar').textContent = u.initials;
+  document.getElementById('topAvatar').style.background = u.color;
+
+  const today = new Date();
+  document.getElementById('dashDate').textContent = today.toLocaleDateString('en-IN', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  checkNotifPermission();
+  await reloadTasks();
+  scheduleReminders();
+  setInterval(checkDueReminders, 30000);
+
+  if (state.session) {
+    await refreshSessionUI();
+  }
+
+  subscribeRealtime();
+}
+
+function checkNotifPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    document.getElementById('notifBanner').style.display = 'flex';
+  }
+}
+function requestNotif() {
+  Notification.requestPermission().then(p => {
+    document.getElementById('notifBanner').style.display = 'none';
+    if (p === 'granted') toast('Notifications enabled! You\'ll get task reminders.', '🔔');
+  });
+}
+
+// ─── REALTIME SUBSCRIPTIONS ──────────────────────────────────────────────────
+function subscribeRealtime() {
+  // Listen for any task change where this user is the owner OR the assignee.
+  // Supabase realtime filters are OR'd by opening two channels.
+  sb.channel('tasks-owned')
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'tasks',
+      filter: `owner_email=eq.${state.user.email}`
+    }, () => { reloadTasks(); })
+    .subscribe();
+
+  sb.channel('tasks-assigned')
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'tasks',
+      filter: `assigned_to=eq.${state.user.email}`
+    }, () => { reloadTasks(); })
+    .subscribe();
+
+  sb.channel('members')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, () => { reloadMembers(); })
+    .subscribe();
+
+  sb.channel('sessions')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, () => { reloadSessions(); })
+    .subscribe();
+}
+
+async function reloadTasks() {
+  if (!state.user) return;
+
+  // Fetch tasks owned by this user
+  const { data: ownedData, error: ownedError } = await sb
+    .from('tasks').select('*').eq('owner_email', state.user.email).order('created_at');
+  if (ownedError) { console.error('reloadTasks owned error', ownedError); return; }
+
+  // Fetch tasks assigned to this user (by any lead in any session)
+  const { data: assignedData, error: assignedError } = await sb
+    .from('tasks').select('*').eq('assigned_to', state.user.email).order('created_at');
+  if (assignedError) { console.error('reloadTasks assigned error', assignedError); return; }
+
+  // Merge and deduplicate by task id (owned tasks take precedence to preserve local edits)
+  const merged = new Map();
+  (ownedData || []).forEach(row => merged.set(row.id, row));
+  (assignedData || []).forEach(row => { if (!merged.has(row.id)) merged.set(row.id, row); });
+
+  state.tasks = Array.from(merged.values()).map(dbToTask);
+  renderAll();
+  scheduleReminders();
+  if (state.session) refreshCollabUI();
+}
+
+async function reloadMembers() {
+  if (state.session) await refreshCollabUI();
+}
+
+async function reloadSessions() {
+  if (state.session) await refreshSessionUI();
+}
+
+// Map DB row → internal task object
+function dbToTask(row) {
+  return {
+    id:         row.id,
+    title:      row.title,
+    desc:       row.description || '',
+    priority:   row.priority,
+    date:       row.due_date || '',
+    time:       row.reminder_time || '',
+    done:       row.done,
+    owner:      row.owner_email,
+    assignedTo: row.assigned_to || null,
+    created:    row.created_at,
+    session_key: row.session_key || null
+  };
+}
+
+// ─── PAGES ────────────────────────────────────────────────────────────────────
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (el) el.classList.add('active');
+  if (name === 'reminders') renderReminders();
+  if (name === 'collab') refreshCollabUI();
+}
+
+// ─── TASKS ────────────────────────────────────────────────────────────────────
+let defaultPriority = 'most';
+
+function openModal(name, priority) {
+  if (name === 'addTask' && priority) defaultPriority = priority;
+  if (name === 'addTask') document.getElementById('taskPriority').value = defaultPriority || 'most';
+  document.getElementById('modal-' + name).classList.add('open');
+}
+function closeModal(name) {
+  document.getElementById('modal-' + name).classList.remove('open');
+}
+
+async function addTask() {
+  const title = document.getElementById('taskTitle').value.trim();
+  if (!title) { toast('Please enter a task title.','⚠️'); return; }
+
+  const row = {
+    id:            uid(),
+    title,
+    description:   document.getElementById('taskDesc').value.trim(),
+    priority:      document.getElementById('taskPriority').value,
+    due_date:      document.getElementById('taskDate').value || null,
+    reminder_time: document.getElementById('taskTime').value || null,
+    done:          false,
+    owner_email:   state.user.email,
+    assigned_to:   null,
+    created_at:    Date.now(),
+    session_key:   state.session ? state.session.key : null
+  };
+
+  const { data, error } = await sb.from('tasks').insert(row).select().single();
+  if (error) { toast('Failed to save task: ' + error.message, '❌'); return; }
+
+  state.tasks.push(dbToTask(data));
+  closeModal('addTask');
+  document.getElementById('taskTitle').value='';
+  document.getElementById('taskDesc').value='';
+  document.getElementById('taskDate').value='';
+  document.getElementById('taskTime').value='';
+  renderAll();
+  scheduleReminders();
+  toast(`Task added to ${labelFor(row.priority)} lane`, '✅');
+}
+
+function labelFor(p) { return {most:'Most Important',important:'Important',not:'Not Important'}[p] || p; }
+
+function editTask(id) {
+  const t = state.tasks.find(x=>x.id===id);
+  if (!t) return;
+  document.getElementById('editTaskId').value = id;
+  document.getElementById('editTitle').value = t.title;
+  document.getElementById('editDesc').value = t.desc;
+  document.getElementById('editPriority').value = t.priority;
+  document.getElementById('editDate').value = t.date;
+  document.getElementById('editTime').value = t.time;
+  openModal('editTask');
+}
+
+async function saveEdit() {
+  const id = document.getElementById('editTaskId').value;
+  const t = state.tasks.find(x=>x.id===id);
+  if (!t) return;
+  const updates = {
+    title:         document.getElementById('editTitle').value.trim() || t.title,
+    description:   document.getElementById('editDesc').value.trim(),
+    priority:      document.getElementById('editPriority').value,
+    due_date:      document.getElementById('editDate').value || null,
+    reminder_time: document.getElementById('editTime').value || null
+  };
+  const { error } = await sb.from('tasks').update(updates).eq('id', id);
+  if (error) { toast('Failed to update: ' + error.message, '❌'); return; }
+  Object.assign(t, { title: updates.title, desc: updates.description, priority: updates.priority, date: updates.due_date||'', time: updates.reminder_time||'' });
+  closeModal('editTask');
+  renderAll();
+  scheduleReminders();
+  toast('Task updated', '✏️');
+}
+
+async function completeTask(id) {
+  const t = state.tasks.find(x => x.id === id);
+  if (!t) return;
+  // Anyone who can see a task (owner or assignee) may toggle its completion.
+  const newDone = !t.done;
+  const { error } = await sb.from('tasks').update({ done: newDone }).eq('id', id);
+  if (error) { toast('Failed to update: ' + error.message, '❌'); return; }
+  t.done = newDone;
+  if (newDone) {
+    // Only the owner triggers promotion logic (avoids double-promotion when assignee completes)
+    if (t.owner === state.user.email) await promoteTasks(t.priority);
+    toast(`"${t.title}" marked complete!`, '🎉');
+  }
+  renderAll();
+}
+
+async function promoteTasks(completedPriority) {
+  const bump = async (from, to) => {
+    const candidate = state.tasks.filter(x=>!x.done && x.priority===from).sort((a,b)=>a.created-b.created)[0];
+    if (!candidate) return;
+    await sb.from('tasks').update({ priority: to }).eq('id', candidate.id);
+    candidate.priority = to;
+    toast(`"${candidate.title}" promoted to ${labelFor(to)}!`, '⬆️');
+  };
+  if (completedPriority === 'most') {
+    await bump('important', 'most');
+    await bump('not', 'important');
+  } else if (completedPriority === 'important') {
+    await bump('not', 'important');
+  }
+}
+
+async function deleteTask(id) {
+  const { error } = await sb.from('tasks').delete().eq('id', id);
+  if (error) { toast('Failed to delete: ' + error.message, '❌'); return; }
+  state.tasks = state.tasks.filter(x=>x.id!==id);
+  renderAll();
+  scheduleReminders();
+  toast('Task deleted', '🗑️');
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function renderAll() {
+  const today = new Date().toISOString().split('T')[0];
+  const lanes = { most: [], important: [], not: [] };
+  let doneCount = 0, todayCount = 0, overdueCount = 0;
+
+  state.tasks.forEach(t => {
+    if (t.done) doneCount++;
+    if (t.date === today && !t.done) todayCount++;
+    if (t.date && t.date < today && !t.done) overdueCount++;
+    if (lanes[t.priority]) lanes[t.priority].push(t);
+  });
+
+  document.getElementById('statTotal').textContent = state.tasks.filter(x=>!x.done).length;
+  document.getElementById('statToday').textContent = todayCount;
+  document.getElementById('statDone').textContent = doneCount;
+  document.getElementById('statOverdue').textContent = overdueCount;
+
+  ['most','important','not'].forEach(p => {
+    const laneEl = document.getElementById('lane' + cap(p));
+    const cnt = lanes[p].length;
+    document.getElementById('cnt' + cap(p)).textContent = cnt;
+    document.getElementById('nav' + cap(p)).textContent = lanes[p].filter(x=>!x.done).length;
+
+    if (cnt === 0) {
+      laneEl.innerHTML = `<div class="lane-empty">${emptyMsg(p)}</div>`;
+      return;
+    }
+    laneEl.innerHTML = '';
+    lanes[p].forEach(t => {
+      laneEl.appendChild(buildCard(t, today));
+    });
+  });
+
+  const total = state.tasks.filter(x=>!x.done).length;
+  document.getElementById('navTotal').textContent = total;
+  document.getElementById('navImp').textContent = lanes.important.filter(x=>!x.done).length;
+  document.getElementById('navMost').textContent = lanes.most.filter(x=>!x.done).length;
+  document.getElementById('navNot').textContent = lanes.not.filter(x=>!x.done).length;
+  document.getElementById('navReminders').textContent = state.tasks.filter(x=>x.time && !x.done).length;
+}
+
+function cap(p) { return {most:'Most',important:'Imp',not:'Not'}[p] || p; }
+function emptyMsg(p) {
+  return {most:'No critical tasks 🎉', important:'All clear here ✓', not:'Add some backlog tasks'}[p];
+}
+
+function buildCard(t, today) {
+  const div = document.createElement('div');
+  div.className = 'task-card' + (t.done ? ' done' : '');
+  const isOverdue = t.date && t.date < today && !t.done;
+  const isToday = t.date === today;
+  const isOwner = t.owner === state.user.email;
+  const isAssignedToMe = t.assignedTo === state.user.email;
+
+  let tags = '';
+  if (t.time) tags += `<span class="tag tag-time">⏰ ${t.time}</span>`;
+  if (isToday && !t.done) tags += `<span class="tag tag-date">Today</span>`;
+  else if (t.date && !t.done) tags += `<span class="tag tag-date">${t.date}</span>`;
+  if (isOverdue) tags += `<span class="tag tag-overdue">Overdue</span>`;
+  // Show "Assigned to you" badge when viewing as the assignee; show "→ name" when viewing as lead/owner
+  if (isAssignedToMe && !isOwner) {
+    tags += `<span class="tag tag-assigned">📋 Assigned to you</span>`;
+  } else if (t.assignedTo && isOwner) {
+    tags += `<span class="tag tag-assigned">→ ${t.assignedTo.split('@')[0]}</span>`;
+  }
+
+  // Juniors can complete any task visible to them (owned or assigned).
+  // Only owners (or lead in a session) can edit or delete a task.
+  const canEdit   = isOwner || (state.session && state.session.role === 'lead');
+  const canDelete = isOwner || (state.session && state.session.role === 'lead');
+
+  div.innerHTML = `
+    <div class="task-title${t.done?' done':''}">${escHtml(t.title)}</div>
+    ${t.desc ? `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.5;">${escHtml(t.desc.slice(0,80))}${t.desc.length>80?'…':''}</div>` : ''}
+    <div class="task-meta">${tags}</div>
+    <div class="task-actions">
+      <button class="task-btn complete" onclick="completeTask('${t.id}')">${t.done ? '↩ Undo' : '✓ Done'}</button>
+      ${canEdit   ? `<button class="task-btn" onclick="editTask('${t.id}')">✏ Edit</button>` : ''}
+      ${canDelete ? `<button class="task-btn delete" onclick="deleteTask('${t.id}')">✕ Del</button>` : ''}
+    </div>`;
+  return div;
+}
+
+function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ─── REMINDERS ────────────────────────────────────────────────────────────────
+let scheduledTimers = [];
+
+function scheduleReminders() {
+  scheduledTimers.forEach(clearTimeout);
+  scheduledTimers = [];
+  const today = new Date().toISOString().split('T')[0];
+  state.tasks.filter(t => t.time && !t.done && t.date === today).forEach(t => {
+    const [h,m] = t.time.split(':').map(Number);
+    const now = new Date();
+    const due = new Date(now); due.setHours(h,m,0,0);
+    const diff = due - now;
+    if (diff > 0) {
+      const timer = setTimeout(() => { fireReminder(t); }, diff);
+      scheduledTimers.push(timer);
+    }
+  });
+}
+
+function fireReminder(t) {
+  toast(`Reminder: "${t.title}" is scheduled now!`, '🔔');
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('TaskFlow Reminder', {
+      body: `"${t.title}" is scheduled for ${t.time}`,
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="%236c63ff"/><text x="16" y="22" font-size="18" text-anchor="middle" fill="white">✓</text></svg>'
+    });
+  }
+}
+
+function checkDueReminders() { scheduleReminders(); }
+
+function renderReminders() {
+  const el = document.getElementById('reminderList');
+  const tasks = state.tasks.filter(t => t.time && !t.done);
+  if (tasks.length === 0) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:13px;text-align:center;padding:3rem 0;">No reminders set yet. Add a task with a scheduled time.</p>';
+    return;
+  }
+  const today = new Date().toISOString().split('T')[0];
+  const colors = {most:'var(--red)',important:'var(--amber)',not:'var(--muted)'};
+  el.innerHTML = '';
+  tasks.sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time)).forEach(t => {
+    const isToday = t.date === today;
+    const isOverdue = t.date && t.date < today;
+    const div = document.createElement('div');
+    div.className = 'reminder-item';
+    div.innerHTML = `
+      <div class="reminder-dot" style="background:${colors[t.priority]};${t.priority==='most'?'box-shadow:0 0 8px rgba(255,107,107,0.5);':''}"></div>
+      <div class="reminder-info">
+        <div class="reminder-title">${escHtml(t.title)}</div>
+        <div class="reminder-time">${t.date || 'No date'} at ${t.time}${isToday?' — Today':''}${isOverdue?' — Overdue':''}</div>
+      </div>
+      <span class="reminder-priority" style="background:rgba(108,99,255,0.15);color:var(--accent2);">${labelFor(t.priority)}</span>`;
+    el.appendChild(div);
+  });
+}
+
+// ─── SESSION / COLLAB ─────────────────────────────────────────────────────────
+async function createSession() {
+  const key = genKey();
+  const { error } = await sb.from('sessions').insert({
+    session_key: key,
+    lead_name:   state.user.name,
+    lead_email:  state.user.email
+  });
+  if (error) { toast('Failed to create session: ' + error.message, '❌'); return; }
+
+  // Add self as lead member
+  await sb.from('members').insert({ session_key: key, name: state.user.name, email: state.user.email, role: 'lead' });
+
+  state.session = { key, role: 'lead' };
+  saveSessionLocally();
+
+  document.getElementById('createdKey').textContent = key;
+  document.getElementById('createdSession').style.display = 'block';
+  await refreshSessionUI();
+  await refreshCollabUI();
+  toast(`Session ${key} created! You're the Lead.`, '🔑');
+}
+
+async function inviteMember() {
+  const email = document.getElementById('inviteEmail').value.trim().toLowerCase();
+  if (!email || !email.includes('@')) { toast('Enter a valid email.','⚠️'); return; }
+  if (!state.session) return;
+
+  // Check not already a member
+  const { data: existing } = await sb.from('members').select('id').eq('session_key', state.session.key).eq('email', email).single();
+  if (existing) { toast('Already a member of this session.','⚠️'); return; }
+
+  // Check not already invited
+  const { data: alreadyInvited } = await sb.from('invites').select('id').eq('session_key', state.session.key).eq('email', email).single();
+  if (alreadyInvited) { toast('Already invited.','⚠️'); return; }
+
+  // Insert invite into Supabase
+  const { error: invErr } = await sb.from('invites').insert({ session_key: state.session.key, email, status: 'pending' });
+  if (invErr) { toast('Failed to save invite: ' + invErr.message, '❌'); return; }
+
+  // Send real email via EmailJS
+  try {
+    await emailjs.send("service_12c6cie", "template_aaq0dtq", {
+      email:        email,
+      session_key:  state.session.key,
+      sender_name:  state.user.name
+    });
+    const st = document.getElementById('inviteStatus');
+    st.textContent = `✓ Invite email sent to ${email}`;
+    st.style.color = 'var(--green)';
+    st.style.display = 'block';
+    toast(`Invite email sent to ${email} 📧`, '✅');
+  } catch(e) {
+    const st = document.getElementById('inviteStatus');
+    st.textContent = `⚠ Invite saved to DB but email failed: ${e.text||e.message||'EmailJS error'}`;
+    st.style.color = 'var(--amber)';
+    st.style.display = 'block';
+    toast(`Invite saved, email delivery failed`, '⚠️');
+  }
+
+  document.getElementById('inviteEmail').value = '';
+  await refreshCollabUI();
+}
+
+async function joinSession() {
+  const key   = document.getElementById('joinKeyInput').value.trim().toUpperCase();
+  const email = document.getElementById('joinEmail').value.trim().toLowerCase();
+  const st    = document.getElementById('joinStatus');
+
+  if (!key || key.length !== 6) { toast('Enter a 6-character session key.','⚠️'); return; }
+  if (!email) { toast('Enter your email.','⚠️'); return; }
+
+  // Verify session exists
+  const { data: sess, error: sessErr } = await sb.from('sessions').select('*').eq('session_key', key).single();
+  if (sessErr || !sess) { st.textContent = '✕ Session not found. Check the key.'; st.style.color='var(--red)'; st.style.display='block'; return; }
+
+  const isLead = sess.lead_email === email;
+
+  // Verify invite exists (unless this person is the lead)
+  if (!isLead) {
+    const { data: invite } = await sb.from('invites').select('*').eq('session_key', key).eq('email', email).single();
+    if (!invite) { st.textContent = '✕ Your email is not on the invite list for this session.'; st.style.color='var(--red)'; st.style.display='block'; return; }
+  }
+
+  // Check already a member
+  const { data: alreadyMember } = await sb.from('members').select('*').eq('session_key', key).eq('email', email).single();
+  if (!alreadyMember) {
+    const { error: memErr } = await sb.from('members').insert({ session_key: key, name: state.user.name || email.split('@')[0], email, role: isLead ? 'lead' : 'junior' });
+    if (memErr) { toast('Failed to join session: ' + memErr.message, '❌'); return; }
+    // Mark invite as accepted
+    if (!isLead) {
+      await sb.from('invites').update({ status: 'accepted' }).eq('session_key', key).eq('email', email);
+    }
+  }
+
+  state.session = { key, role: isLead ? 'lead' : 'junior' };
+  saveSessionLocally();
+
+  st.textContent = `✓ Joined session ${key} as ${isLead ? 'Lead!' : 'Junior!'}`;
+  st.style.color='var(--green)'; st.style.display='block';
+  await refreshSessionUI();
+  await refreshCollabUI();
+  toast(`Joined session ${key}!`, '🤝');
+}
+
+async function refreshSessionUI() {
+  if (!state.session) {
+    document.getElementById('sidebarSession').style.display = 'none';
+    document.getElementById('sessionIndicator').style.display = 'none';
+    document.getElementById('activeSessionPanel').style.display = 'none';
+    return;
+  }
+
+  const { data: members } = await sb.from('members').select('*').eq('session_key', state.session.key);
+  const mems = members || [];
+
+  document.getElementById('sidebarSession').style.display = 'block';
+  document.getElementById('sideSessionKey').textContent = state.session.key;
+  document.getElementById('sideSessionRole').textContent = 'Role: ' + (state.session.role === 'lead' ? '👑 Lead' : '👤 Junior');
+
+  const memsEl = document.getElementById('sideSessionMembers');
+  memsEl.innerHTML = '';
+  mems.forEach(m => {
+    const pip = document.createElement('div');
+    pip.className = 'member-pip';
+    pip.textContent = (m.name||m.email).split('@')[0].slice(0,8);
+    memsEl.appendChild(pip);
+  });
+
+  document.getElementById('sessionIndicator').style.display = 'block';
+  document.getElementById('sessionIndicator').textContent = `🔑 ${state.session.key}`;
+}
+
+async function refreshCollabUI() {
+  if (!state.session) {
+    document.getElementById('activeSessionPanel').style.display = 'none';
+    return;
+  }
+
+  const { data: members } = await sb.from('members').select('*').eq('session_key', state.session.key);
+  const { data: invites }  = await sb.from('invites').select('*').eq('session_key', state.session.key).eq('status', 'pending');
+  const mems = members || [];
+  const invs = invites || [];
+
+  document.getElementById('activeSessionPanel').style.display = 'block';
+  document.getElementById('activeSessionKeyDisplay').textContent = state.session.key;
+
+  // Members list
+  const ml = document.getElementById('membersList');
+  ml.innerHTML = '';
+  const allPeople = [...mems, ...invs.map(i=>({ email: i.email, name: i.email, role: 'pending' }))];
+  allPeople.forEach(m => {
+    const div = document.createElement('div');
+    div.className = 'member-card';
+    const initials = (m.name||m.email).slice(0,2).toUpperCase();
+    const roleClass = m.role==='lead'?'role-lead':m.role==='junior'?'role-junior':'role-pending';
+    const roleLabel = m.role==='lead'?'👑 Lead':m.role==='junior'?'👤 Junior':'⏳ Pending';
+    div.innerHTML = `
+      <div class="avatar" style="background:${m.role==='lead'?'#6c63ff':m.role==='junior'?'#22d3ee':'#555'};color:#fff;width:34px;height:34px;font-size:12px;flex-shrink:0;">${initials}</div>
+      <div class="member-info"><div class="member-name">${escHtml(m.name||m.email)}</div><div class="member-email">${escHtml(m.email||'')}</div></div>
+      <span class="role-badge ${roleClass}">${roleLabel}</span>`;
+    ml.appendChild(div);
+  });
+
+  // Assign panel (lead only)
+  const ap = document.getElementById('assignPanel');
+  if (state.session.role === 'lead') {
+    ap.style.display = 'block';
+    // Task select
+    const ts = document.getElementById('assignTaskSelect');
+    ts.innerHTML = '<option value="">Select task...</option>';
+    state.tasks.filter(t=>!t.done).forEach(t => {
+      const o = document.createElement('option');
+      o.value = t.id; o.textContent = t.title.slice(0,30);
+      ts.appendChild(o);
+    });
+    // Member select (juniors only)
+    const ms = document.getElementById('assignMemberSelect');
+    ms.innerHTML = '<option value="">Select member...</option>';
+    mems.filter(m=>m.role!=='lead').forEach(m => {
+      const o = document.createElement('option');
+      o.value = m.email; o.textContent = m.name||m.email;
+      ms.appendChild(o);
+    });
+    // Assignments list: tasks that have assigned_to set in this session
+    const al = document.getElementById('assignmentsList');
+    al.innerHTML = '';
+    const assigned = state.tasks.filter(t => t.assignedTo);
+    if (assigned.length === 0) {
+      al.innerHTML = '<p style="font-size:12px;color:var(--muted);">No assignments yet.</p>';
+    } else {
+      assigned.forEach(t => {
+        const d = document.createElement('div');
+        d.style.cssText = 'font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;';
+        d.innerHTML = `<span style="flex:1;color:var(--text);">${escHtml(t.title)}</span><span style="color:var(--teal);">→ ${escHtml(t.assignedTo.split('@')[0])}</span>`;
+        al.appendChild(d);
+      });
+    }
+  } else {
+    ap.style.display = 'none';
+  }
+}
+
+async function assignTask() {
+  const taskId = document.getElementById('assignTaskSelect').value;
+  const to     = document.getElementById('assignMemberSelect').value;
+  if (!taskId || !to) { toast('Select a task and member.','⚠️'); return; }
+
+  const { error } = await sb.from('tasks').update({ assigned_to: to }).eq('id', taskId);
+  if (error) { toast('Assignment failed: ' + error.message, '❌'); return; }
+
+  // Keep local state in sync immediately (the realtime channel will also fire)
+  const task = state.tasks.find(t => t.id === taskId);
+  if (task) task.assignedTo = to;
+
+  // Refresh UI for the lead immediately
+  await refreshCollabUI();
+  renderAll();
+
+  const as = document.getElementById('assignStatus');
+  as.textContent = `✓ "${task ? task.title : taskId}" assigned to ${to.split('@')[0]}`;
+  as.style.display = 'block';
+  setTimeout(() => as.style.display = 'none', 3000);
+  toast(`Task assigned to ${to.split('@')[0]}`, '📋');
+  // The junior's tasks-assigned realtime channel will fire reloadTasks() on their end automatically.
+}
+
+async function leaveSession() {
+  if (!confirm('Leave this session?')) return;
+  if (state.session && state.session.role !== 'lead') {
+    await sb.from('members').delete().eq('session_key', state.session.key).eq('email', state.user.email);
+  }
+  state.session = null;
+  saveSessionLocally();
+  await refreshSessionUI();
+  await refreshCollabUI();
+  toast('Left the session.', '👋');
+}
+
+// ─── UTILS ────────────────────────────────────────────────────────────────────
+function toast(msg, icon='ℹ️') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.innerHTML = `<span class="toast-icon">${icon}</span><span class="toast-msg">${msg}</span>`;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+async function clearAll() {
+  if (!confirm('Clear ALL your tasks? This cannot be undone.')) return;
+  await sb.from('tasks').delete().eq('owner_email', state.user.email);
+  state.tasks = [];
+  renderAll();
+  toast('All tasks cleared.', '🗑️');
+}
+
+// ─── INITIAL RENDER ───────────────────────────────────────────────────────────
+if (state.user) renderAll();
+</script>
+</body>
+</html>
