@@ -716,6 +716,12 @@ function labelFor(p) { return {most:'Most Important',important:'Important',not:'
 function editTask(id) {
   const t = state.tasks.find(x=>x.id===id);
   if (!t) return;
+  // Permission check — blocks console bypass attempts
+  const { canEdit } = getTaskPerms(t);
+  if (!canEdit) {
+    toast('Permission denied: you cannot edit this task.', '🚫');
+    return;
+  }
   document.getElementById('editTaskId').value = id;
   document.getElementById('editTitle').value = t.title;
   document.getElementById('editDesc').value = t.desc;
@@ -729,6 +735,13 @@ async function saveEdit() {
   const id = document.getElementById('editTaskId').value;
   const t = state.tasks.find(x=>x.id===id);
   if (!t) return;
+  // Server-side permission check — blocks console bypass
+  const { canEdit } = getTaskPerms(t);
+  if (!canEdit) {
+    toast('Permission denied: you cannot edit this task.', '🚫');
+    closeModal('editTask');
+    return;
+  }
   const updates = {
     title:         document.getElementById('editTitle').value.trim() || t.title,
     description:   document.getElementById('editDesc').value.trim(),
@@ -748,6 +761,12 @@ async function saveEdit() {
 async function completeTask(id) {
   const t = state.tasks.find(x => x.id === id);
   if (!t) return;
+  // Permission check — blocks console bypass
+  const { canComplete } = getTaskPerms(t);
+  if (!canComplete) {
+    toast('Permission denied: you cannot complete this task.', '🚫');
+    return;
+  }
   // Anyone who can see a task (owner or assignee) may toggle its completion.
   const newDone = !t.done;
   const { error } = await sb.from('tasks').update({ done: newDone }).eq('id', id);
@@ -778,6 +797,14 @@ async function promoteTasks(completedPriority) {
 }
 
 async function deleteTask(id) {
+  const t = state.tasks.find(x => x.id === id);
+  if (!t) { toast('Task not found.', '⚠️'); return; }
+  // Permission check — blocks console bypass
+  const { canDelete } = getTaskPerms(t);
+  if (!canDelete) {
+    toast('Permission denied: you cannot delete this task.', '🚫');
+    return;
+  }
   const { error } = await sb.from('tasks').delete().eq('id', id);
   if (error) { toast('Failed to delete: ' + error.message, '❌'); return; }
   state.tasks = state.tasks.filter(x=>x.id!==id);
@@ -833,13 +860,28 @@ function emptyMsg(p) {
   return {most:'No critical tasks 🎉', important:'All clear here ✓', not:'Add some backlog tasks'}[p];
 }
 
+function getTaskPerms(t) {
+  const isLead   = state.session?.role === 'lead';
+  const isOwner  = t.owner === state.user.email;
+  const inSession = !!state.session;
+
+  // canEdit: outside session → always; in session → lead or owner of task
+  const canEdit   = !inSession || isLead || isOwner;
+  // canDelete: same as canEdit
+  const canDelete = !inSession || isLead || isOwner;
+  // canComplete: owner, assignee, or lead
+  const canComplete = isOwner || t.assignedTo === state.user.email || isLead;
+
+  return { isLead, isOwner, canEdit, canDelete, canComplete };
+}
+
 function buildCard(t, today) {
   const div = document.createElement('div');
   div.className = 'task-card' + (t.done ? ' done' : '');
   const isOverdue = t.date && t.date < today && !t.done;
   const isToday = t.date === today;
-  const isOwner = t.owner === state.user.email;
   const isAssignedToMe = t.assignedTo === state.user.email;
+  const { isOwner, canEdit, canDelete, canComplete } = getTaskPerms(t);
 
   let tags = '';
   if (t.time) tags += `<span class="tag tag-time">⏰ ${t.time}</span>`;
@@ -852,18 +894,17 @@ function buildCard(t, today) {
   } else if (t.assignedTo && isOwner) {
     tags += `<span class="tag tag-assigned">→ ${t.assignedTo.split('@')[0]}</span>`;
   }
-
-  // Juniors can complete any task visible to them (owned or assigned).
-  // Only owners (or lead in a session) can edit or delete a task.
-  const canEdit   = isOwner || (state.session && state.session.role === 'lead');
-  const canDelete = isOwner || (state.session && state.session.role === 'lead');
+  // Role badge for junior viewing a lead-assigned task
+  if (state.session && !isOwner && isAssignedToMe) {
+    tags += `<span class="tag" style="background:rgba(167,139,250,0.15);color:var(--accent2);">👑 Lead Task</span>`;
+  }
 
   div.innerHTML = `
     <div class="task-title${t.done?' done':''}">${escHtml(t.title)}</div>
     ${t.desc ? `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.5;">${escHtml(t.desc.slice(0,80))}${t.desc.length>80?'…':''}</div>` : ''}
     <div class="task-meta">${tags}</div>
     <div class="task-actions">
-      <button class="task-btn complete" onclick="completeTask('${t.id}')">${t.done ? '↩ Undo' : '✓ Done'}</button>
+      ${canComplete ? `<button class="task-btn complete" onclick="completeTask('${t.id}')">${t.done ? '↩ Undo' : '✓ Done'}</button>` : ''}
       ${canEdit   ? `<button class="task-btn" onclick="editTask('${t.id}')">✏ Edit</button>` : ''}
       ${canDelete ? `<button class="task-btn delete" onclick="deleteTask('${t.id}')">✕ Del</button>` : ''}
     </div>`;
@@ -1076,6 +1117,24 @@ async function refreshCollabUI() {
   document.getElementById('activeSessionPanel').style.display = 'block';
   document.getElementById('activeSessionKeyDisplay').textContent = state.session.key;
 
+  // Show/hide junior permissions notice
+  const isLead = state.session.role === 'lead';
+  let juniorNotice = document.getElementById('juniorPermNotice');
+  if (!juniorNotice) {
+    juniorNotice = document.createElement('div');
+    juniorNotice.id = 'juniorPermNotice';
+    juniorNotice.style.cssText = 'background:rgba(34,211,238,0.08);border:1px solid rgba(34,211,238,0.25);border-radius:10px;padding:12px 16px;margin-bottom:1rem;font-size:12px;color:var(--teal);line-height:1.7;';
+    document.getElementById('activeSessionPanel').prepend(juniorNotice);
+  }
+  if (!isLead) {
+    const assignedToMe = state.tasks.filter(t => t.assignedTo === state.user.email);
+    juniorNotice.style.display = 'block';
+    juniorNotice.innerHTML = `<strong>👤 Junior Mode</strong> — You have <strong>${assignedToMe.length}</strong> task(s) assigned to you.<br>
+      You can <span style="color:var(--green);">✓ complete / ↩ undo</span> assigned tasks. Editing task details is reserved for the Lead.`;
+  } else {
+    juniorNotice.style.display = 'none';
+  }
+
   // Members list
   const ml = document.getElementById('membersList');
   ml.innerHTML = '';
@@ -1095,7 +1154,7 @@ async function refreshCollabUI() {
 
   // Assign panel (lead only)
   const ap = document.getElementById('assignPanel');
-  if (state.session.role === 'lead') {
+  if (isLead) {
     ap.style.display = 'block';
     // Task select
     const ts = document.getElementById('assignTaskSelect');
@@ -1123,7 +1182,7 @@ async function refreshCollabUI() {
       assigned.forEach(t => {
         const d = document.createElement('div');
         d.style.cssText = 'font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;';
-        d.innerHTML = `<span style="flex:1;color:var(--text);">${escHtml(t.title)}</span><span style="color:var(--teal);">→ ${escHtml(t.assignedTo.split('@')[0])}</span>`;
+        d.innerHTML = `<span style="flex:1;color:var(--text);">${escHtml(t.title)}</span><span style="color:var(--teal);">→ ${escHtml(t.assignedTo.split('@')[0])}</span>${t.done?'<span style="color:var(--green);">✓</span>':''}`;
         al.appendChild(d);
       });
     }
@@ -1133,6 +1192,11 @@ async function refreshCollabUI() {
 }
 
 async function assignTask() {
+  // Only the lead may assign tasks
+  if (!state.session || state.session.role !== 'lead') {
+    toast('Permission denied: only the Lead can assign tasks.', '🚫');
+    return;
+  }
   const taskId = document.getElementById('assignTaskSelect').value;
   const to     = document.getElementById('assignMemberSelect').value;
   if (!taskId || !to) { toast('Select a task and member.','⚠️'); return; }
